@@ -1,400 +1,182 @@
-package pers.solid.mishang.uc;
+package pers.solid.mishang.uc.item;
 
-import com.google.common.base.Functions;
-import com.google.common.base.Suppliers;
-import com.google.common.collect.*;
-import com.google.gson.JsonPrimitive;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.api.EnvironmentInterface;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
-import net.minecraft.data.client.VariantSetting;
+import net.minecraft.block.ShapeContext;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.item.TooltipContext;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.data.client.Models;
+import net.minecraft.data.client.TextureKey;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.boss.dragon.EnderDragonPart;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.fluid.FluidState;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
-import net.minecraft.nbt.*;
-import net.minecraft.state.property.Property;
-import net.minecraft.text.MutableText;
+import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.BlockRotation;
-import net.minecraft.util.DyeColor;
+import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.util.shape.VoxelShape;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShapes;
+import net.minecraft.world.World;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
-import pers.solid.mishang.uc.blocks.*;
-import pers.solid.mishang.uc.item.MishangucItems;
-import pers.solid.mishang.uc.text.TextContext;
-import pers.solid.mishang.uc.util.LineColor;
-import pers.solid.mishang.uc.util.LineType;
+import pers.solid.brrp.v1.generator.ItemResourceGenerator;
+import pers.solid.brrp.v1.model.ModelJsonBuilder;
+import pers.solid.mishang.uc.MishangucClient;
+import pers.solid.mishang.uc.MishangucRules;
+import pers.solid.mishang.uc.mixin.WorldRendererInvoker;
+import pers.solid.mishang.uc.render.RendersBeforeOutline;
+import pers.solid.mishang.uc.util.BlockPlacementContext;
 import pers.solid.mishang.uc.util.TextBridge;
-import pers.solid.mishang.uc.util.VerticalAlign;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
-import java.util.*;
-import java.util.function.Supplier;
-import java.util.stream.Stream;
+import java.util.List;
 
-/**
- * 本类存放一些实用方法。
- */
-public class MishangUtils {
-  /**
-   * @since 0.2.0 该字段为一个不可变的映射。
-   */
-  public static final @Unmodifiable BiMap<DyeColor, Integer> COLOR_TO_OUTLINE_COLOR = Arrays.stream(DyeColor.values()).collect(ImmutableBiMap.toImmutableBiMap(Functions.identity(), MishangUtils::toSignOutlineColor));
-  public static final VariantSetting<Integer> INT_X_VARIANT = new VariantSetting<>("x", JsonPrimitive::new);
-  public static final VariantSetting<Integer> INT_Y_VARIANT = new VariantSetting<>("y", JsonPrimitive::new);
-  public static final VariantSetting<Direction> DIRECTION_Y_VARIANT = new VariantSetting<>("y", direction -> new JsonPrimitive((int) direction.asRotation()));
-  private static final Supplier<ImmutableList<Block>> memoizedBlocks = Suppliers.memoize(MishangUtils::blocksInternal);
-  private static final Supplier<ImmutableList<Item>> memoizedItems = Suppliers.memoize(MishangUtils::itemsInternal);
-  private static final ImmutableSet<Block> WOODS = ImmutableSet.of(Blocks.OAK_WOOD, Blocks.SPRUCE_WOOD, Blocks.BIRCH_WOOD, Blocks.JUNGLE_WOOD, Blocks.ACACIA_WOOD, Blocks.DARK_OAK_WOOD, Blocks.MANGROVE_WOOD, Blocks.CRIMSON_HYPHAE, Blocks.WARPED_HYPHAE);
-  private static final ImmutableSet<Block> PLANKS = ImmutableSet.of(Blocks.OAK_PLANKS, Blocks.SPRUCE_PLANKS, Blocks.BIRCH_PLANKS, Blocks.JUNGLE_PLANKS, Blocks.ACACIA_PLANKS, Blocks.DARK_OAK_PLANKS, Blocks.MANGROVE_PLANKS, Blocks.WARPED_PLANKS, Blocks.CRIMSON_PLANKS);
-  private static final ImmutableSet<Block> CONCRETES = ImmutableSet.of(Blocks.WHITE_CONCRETE, Blocks.ORANGE_CONCRETE, Blocks.MAGENTA_CONCRETE, Blocks.LIGHT_BLUE_CONCRETE, Blocks.YELLOW_CONCRETE, Blocks.LIME_CONCRETE, Blocks.PINK_CONCRETE, Blocks.GRAY_CONCRETE, Blocks.LIGHT_GRAY_CONCRETE, Blocks.CYAN_CONCRETE, Blocks.PURPLE_CONCRETE, Blocks.BLUE_CONCRETE, Blocks.BROWN_CONCRETE, Blocks.GREEN_CONCRETE, Blocks.RED_CONCRETE, Blocks.BLACK_CONCRETE);
-  private static final ImmutableSet<Block> TERRACOTTAS = ImmutableSet.of(Blocks.WHITE_TERRACOTTA, Blocks.ORANGE_TERRACOTTA, Blocks.MAGENTA_TERRACOTTA, Blocks.LIGHT_BLUE_TERRACOTTA, Blocks.YELLOW_TERRACOTTA, Blocks.LIME_TERRACOTTA, Blocks.PINK_TERRACOTTA, Blocks.GRAY_TERRACOTTA, Blocks.LIGHT_GRAY_TERRACOTTA, Blocks.CYAN_TERRACOTTA, Blocks.PURPLE_TERRACOTTA, Blocks.BLUE_TERRACOTTA, Blocks.BROWN_TERRACOTTA, Blocks.GREEN_TERRACOTTA, Blocks.RED_TERRACOTTA, Blocks.BLACK_TERRACOTTA);
-  private static final ImmutableSet<Block> WOOLS = ImmutableSet.of(Blocks.WHITE_WOOL, Blocks.ORANGE_WOOL, Blocks.MAGENTA_WOOL, Blocks.LIGHT_BLUE_WOOL, Blocks.YELLOW_WOOL, Blocks.LIME_WOOL, Blocks.PINK_WOOL, Blocks.GRAY_WOOL, Blocks.LIGHT_GRAY_WOOL, Blocks.CYAN_WOOL, Blocks.PURPLE_WOOL, Blocks.BLUE_WOOL, Blocks.BROWN_WOOL, Blocks.GREEN_WOOL, Blocks.RED_WOOL, Blocks.BLACK_WOOL);
-  private static final ImmutableSet<Block> STAINED_GLASSES = ImmutableSet.of(Blocks.WHITE_STAINED_GLASS, Blocks.ORANGE_STAINED_GLASS, Blocks.MAGENTA_STAINED_GLASS, Blocks.LIGHT_BLUE_STAINED_GLASS, Blocks.YELLOW_STAINED_GLASS, Blocks.LIME_STAINED_GLASS, Blocks.PINK_STAINED_GLASS, Blocks.GRAY_STAINED_GLASS, Blocks.LIGHT_GRAY_STAINED_GLASS, Blocks.CYAN_STAINED_GLASS, Blocks.PURPLE_STAINED_GLASS, Blocks.BLUE_STAINED_GLASS, Blocks.BROWN_STAINED_GLASS, Blocks.GREEN_STAINED_GLASS, Blocks.RED_STAINED_GLASS, Blocks.BLACK_STAINED_GLASS);
-  private static final @Unmodifiable Map<String, String> ARROW_TO_NAMES = new ImmutableMap.Builder<String, String>()
-      .put("←", "al")
-      .put("→", "ar")
-      .put("↑", "at")
-      .put("↓", "ab")
-      .put("↖", "alt")
-      .put("↗", "art")
-      .put("↙", "alb")
-      .put("↘", "arb")
-      .build();
+@EnvironmentInterface(value = EnvType.CLIENT, itf = RendersBeforeOutline.class)
+public class ForcePlacingToolItem extends BlockToolItem implements InteractsWithEntity, RendersBeforeOutline, ItemResourceGenerator {
 
-  public static boolean isWood(Block block) {
-    return WOODS.contains(block);
+  public ForcePlacingToolItem(Settings settings, @Nullable Boolean includesFluid) {
+    super(settings, includesFluid);
   }
 
-  public static boolean isPlanks(Block block) {
-    return PLANKS.contains(block) || block == ColoredBlocks.COLORED_PLANKS;
-  }
-
-  public static boolean isConcrete(Block block) {
-    return CONCRETES.contains(block) || block == ColoredBlocks.COLORED_CONCRETE;
-  }
-
-  public static boolean isTerracotta(Block block) {
-    return TERRACOTTAS.contains(block) || block == ColoredBlocks.COLORED_TERRACOTTA;
-  }
-
-  public static boolean isWool(Block block) {
-    return WOOLS.contains(block) || block == ColoredBlocks.COLORED_WOOL;
-  }
-
-  public static boolean isStained_glass(Block block) {
-    return STAINED_GLASSES.contains(block) || block == ColoredBlocks.COLORED_GLASS;
-  }
-
-  @SuppressWarnings("SuspiciousNameCombination")
-  public static EnumMap<Direction, @NotNull VoxelShape> createDirectionToShape(
-      double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
-    final EnumMap<Direction, VoxelShape> map = new EnumMap<>(Direction.class);
-    map.put(Direction.UP, Block.createCuboidShape(minX, minY, minZ, maxX, maxY, maxZ));
-    map.put(
-        Direction.DOWN,
-        Block.createCuboidShape(16 - maxX, 16 - maxY, 16 - maxZ, 16 - minX, 16 - minY, 16 - minZ));
-    map.put(Direction.EAST, Block.createCuboidShape(minY, minZ, minX, maxY, maxZ, maxX));
-    map.put(
-        Direction.WEST,
-        Block.createCuboidShape(16 - maxY, 16 - maxZ, 16 - maxX, 16 - minY, 16 - minZ, 16 - minX));
-    map.put(Direction.SOUTH, Block.createCuboidShape(minX, minZ, minY, maxX, maxZ, maxY));
-    map.put(
-        Direction.NORTH,
-        Block.createCuboidShape(16 - maxX, 16 - maxZ, 16 - maxY, 16 - minX, 16 - minZ, 16 - minY));
-    return map;
-  }
-
-  public static Map<Direction, @Nullable VoxelShape> createHorizontalDirectionToShape(
-      double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
-    final Map<Direction, VoxelShape> map = new EnumMap<>(Direction.class);
-    map.put(Direction.SOUTH, Block.createCuboidShape(minX, minY, minZ, maxX, maxY, maxZ));
-    map.put(Direction.WEST, Block.createCuboidShape(16 - maxZ, minY, minX, 16 - minZ, maxY, maxX));
-    map.put(
-        Direction.NORTH,
-        Block.createCuboidShape(16 - maxX, minY, 16 - maxZ, 16 - minX, maxY, 16 - minZ));
-    map.put(Direction.EAST, Block.createCuboidShape(minZ, minY, 16 - maxX, maxZ, maxY, 16 - minX));
-    return map;
-  }
-
-  @SafeVarargs
-  public static Map<Direction, VoxelShape> createDirectionToUnionShape(
-      Map<Direction, VoxelShape> firstDirectionToShape,
-      Map<Direction, VoxelShape>... directionToShapes) {
-    final Map<Direction, VoxelShape> map = new EnumMap<>(Direction.class);
-    for (Direction direction : Direction.values()) {
-      final VoxelShape first = firstDirectionToShape.get(direction);
-      if (first != null) {
-        map.put(direction, VoxelShapes.union(
-            first,
-            Arrays.stream(directionToShapes)
-                .filter(Objects::nonNull)
-                .map(directionToShape -> directionToShape.get(direction))
-                .toArray(VoxelShape[]::new)));
-      }
+  @Override
+  public ActionResult useOnBlock(ItemStack stack, PlayerEntity player, World world, BlockHitResult blockHitResult, Hand hand, boolean fluidIncluded) {
+    if (!hasAccess(player, world, true)) {
+      return ActionResult.PASS;
     }
-    return map;
+    BlockPlacementContext blockPlacementContext = new BlockPlacementContext(world, blockHitResult.getBlockPos(), player, player.getStackInHand(hand), blockHitResult, fluidIncluded);
+    blockPlacementContext.playSound();
+    int flags = getFlags(stack);
+    suppressOnBlockAdded = true;
+    blockPlacementContext.setBlockState(flags);
+    suppressOnBlockAdded = false;
+    blockPlacementContext.setBlockEntity();
+    return ActionResult.success(world.isClient);
   }
 
-  /**
-   * 根据 signColor 返回颜色值。
-   *
-   * @param signColor 对应的告示牌颜色（整数）。
-   * @return 颜色枚举对象，可能为 null。
-   */
-  public static @Nullable DyeColor colorBySignColor(int signColor) {
-    for (DyeColor color : DyeColor.values()) {
-      if (color.getSignColor() == signColor) {
-        return color;
-      }
+  public static boolean suppressOnBlockAdded = false;
+
+  @Override
+  public ActionResult beginAttackBlock(ItemStack stack, PlayerEntity player, World world, Hand hand, BlockPos pos, Direction direction, boolean fluidIncluded) {
+    if (!hasAccess(player, world, true)) {
+      return ActionResult.PASS;
     }
-    return null;
+    final BlockState blockState = world.getBlockState(pos);
+    world.syncWorldEvent(player, 2001, pos, Block.getRawIdFromState(world.getBlockState(pos)));
+    FluidState fluidState = blockState.getFluidState();
+    world.removeBlockEntity(pos);
+    int flags = getFlags(stack);
+    world.setBlockState(pos, fluidIncluded ? Blocks.AIR.getDefaultState() : fluidState.getBlockState(), flags);
+    return ActionResult.success(world.isClient);
   }
 
-  /**
-   * 将颜色转化为告示牌发光的颜色。
-   *
-   * @param color 颜色。
-   * @return 发光后颜色的整数值。
-   */
-  private static int toSignOutlineColor(DyeColor color) {
-    return toSignOutlineColor(color.getSignColor());
+  private static int getFlags(ItemStack stack) {
+    return 0b11010;
   }
 
-  /**
-   * 将颜色转化为告示牌发光的颜色。若为黑色，则返回白色。
-   *
-   * @param color 颜色的整数值。
-   * @return 发光后颜色的整数值。
-   */
-  public static int toSignOutlineColor(int color) {
-    int j = (int) ((double) (color & 0xFF) * 0.4);
-    int k = (int) ((double) (color >> 8 & 0xFF) * 0.4);
-    int l = (int) ((double) (color >> 16 & 0xFF) * 0.4);
-    if (color == 0) {
-      return 0xf0ebcc;
+  @Override
+  public void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context) {
+    super.appendTooltip(stack, world, tooltip, context);
+    tooltip.add(TextBridge.translatable("item.mishanguc.force_placing_tool.tooltip.1").formatted(Formatting.GRAY));
+    tooltip.add(TextBridge.translatable("item.mishanguc.force_placing_tool.tooltip.2").formatted(Formatting.GRAY));
+    if (Boolean.TRUE.equals(includesFluid(stack))) {
+      tooltip.add(TextBridge.translatable("item.mishanguc.force_placing_tool.tooltip.fluids").formatted(Formatting.GRAY));
     }
-    return (0) << 24 | (l & 0xFF) << 16 | (k & 0xFF) << 8 | (j & 0xFF);
-  }
-
-  @ApiStatus.AvailableSince("0.2.0")
-  @ApiStatus.Internal
-  private static @Unmodifiable ImmutableList<Block> blocksInternal() {
-    ImmutableList.Builder<Block> builder = new ImmutableList.Builder<>();
-    Streams.concat(
-        instanceStream(RoadBlocks.class, Block.class),
-        RoadSlabBlocks.SLABS.stream(),
-        instanceStream(RoadMarkBlocks.class, Block.class),
-        instanceStream(LightBlocks.class, Block.class),
-        instanceStream(HungSignBlocks.class, Block.class),
-        instanceStream(WallSignBlocks.class, Block.class),
-        instanceStream(StandingSignBlocks.class, Block.class),
-        instanceStream(HandrailBlocks.class, Block.class),
-        instanceStream(ColoredBlocks.class, Block.class)
-    ).forEach(builder::add);
-    final ImmutableList<Block> build = builder.build();
-    if (build.isEmpty()) {
-      throw new AssertionError("The collection returned is empty, which is not expected. You may have to report to the author of Mishang Urban Construction mod.");
+    tooltip.add(TextBridge.translatable("item.mishanguc.force_placing_tool.tooltip.3").formatted(Formatting.GRAY));
+    if ((getFlags(stack) & 128) != 0) {
+      tooltip.add(TextBridge.translatable("item.mishanguc.force_placing_tool.tooltip.suspends_light").formatted(Formatting.YELLOW));
     }
-    return build;
   }
 
-  @ApiStatus.AvailableSince("0.2.0")
-  @ApiStatus.Internal
-  private static @Unmodifiable ImmutableList<Item> itemsInternal() {
-    ImmutableList.Builder<Item> builder = new ImmutableList.Builder<>();
-    instanceStream(MishangucItems.class, Item.class).forEach(builder::add);
-    final ImmutableList<Item> build = builder.build();
-    if (build.isEmpty()) {
-      throw new AssertionError("The collection returned is empty, which is not expected. You may have to report to the author of Mishang Urban Construction mod.");
-    }
-    return build;
-  }
-
-  /**
-   * 该模组的所有方块字段及其值的集合。会通过反射来访问字段，并记住这个值，下次直接返回该值。
-   *
-   * @return 由方块字段和值组成的不可变映射。第一次调用时会生成，此后的所有调用都会直接使用这个值。
-   */
-  @ApiStatus.AvailableSince("0.2.0")
-  public static @Unmodifiable ImmutableList<Block> blocks() {
-    return memoizedBlocks.get();
-  }
-
-  /**
-   * 该模组的所有物品字段及其值的集合。会通过反射来访问字段，并记住这个值，下次直接返回该值。
-   *
-   * @return 由物品字段和值组成的不可变映射。第一次调用时会生成，此后的所有调用都会直接使用这个值。
-   */
-  @ApiStatus.AvailableSince("0.2.0")
-  public static @Unmodifiable ImmutableList<Item> items() {
-    return memoizedItems.get();
-  }
-
-  /**
-   * 迭代某个类中的所有字段，并返回由 public static final 字段组成的流。
-   *
-   * @param containerClass 包含该字段的类，该字段不一定要属于该类。
-   * @return 由类中的 public static final 字段组成的流。
-   */
-  public static Stream<Field> fieldStream(Class<?> containerClass) {
-    return Arrays.stream(containerClass.getFields())
-        .filter(
-            field -> {
-              int modifier = field.getModifiers();
-              return Modifier.isPublic(modifier)
-                  && Modifier.isStatic(modifier)
-                  && Modifier.isFinal(modifier);
-            });
-  }
-
-  public static <T> Stream<Map.Entry<Field, T>> instanceEntryStream(Stream<Field> fieldStream, Class<T> castToClass) {
-    return fieldStream.map(field -> {
-      final Object o;
-      try {
-        o = field.get(null);
-      } catch (IllegalAccessException e) {
-        throw new InternalError("Cannot access value of the field in Mishang Urban Construction mod.", e);
-      }
-      if (castToClass.isInstance(o)) {
-        return Maps.immutableEntry(field, castToClass.cast(o));
-      } else {
-        return null;
-      }
-    }).filter(Objects::nonNull);
-  }
-
-  public static <T> Stream<Map.Entry<Field, T>> instanceEntryStream(Class<?> containerClass, Class<T> castToClass) {
-    return instanceEntryStream(fieldStream(containerClass), castToClass);
-  }
-
-  public static <T> Stream<@NotNull T> instanceStream(Class<?> containerClass, Class<T> castToClass) {
-    return instanceEntryStream(containerClass, castToClass).map(Map.Entry::getValue);
-  }
-
-  /**
-   * 重新整理 textContexts。
-   *
-   * @param textContexts 由 textContexts 组成的集合。
-   */
-  public static void rearrange(Collection<TextContext> textContexts) {
-    final EnumMap<VerticalAlign, List<TextContext>> directionToContexts = new EnumMap<>(VerticalAlign.class);
-    for (TextContext textContext : textContexts) {
-      if (!textContext.absolute) {
-        directionToContexts.putIfAbsent(textContext.verticalAlign, new ArrayList<>());
-        directionToContexts.get(textContext.verticalAlign).add(textContext);
-      }
-    }
-    directionToContexts.forEach((verticalAlign, list) -> {
-      float stackedHeight = 0;
-      for (TextContext textContext : list) {
-        textContext.offsetY = (stackedHeight += textContext.getMarginTop() / 2f);
-        stackedHeight += textContext.getHeight() / 2f;
-        stackedHeight += textContext.getMarginTop() / 2f;
-      }
-      for (TextContext textContext : list) {
-        switch (verticalAlign) {
-          case MIDDLE -> textContext.offsetY -= (stackedHeight - textContext.getHeight() / 2f) / 2f;
-          case BOTTOM -> textContext.offsetY -= stackedHeight - textContext.getHeight() / 2f;
-        }
-      }
-    });
-  }
-
-  /**
-   * 对一个坐标轴进行旋转。
-   */
-  public static Direction.Axis rotateAxis(BlockRotation rotation, Direction.Axis axis) {
-    return switch (rotation) {
-      case COUNTERCLOCKWISE_90, CLOCKWISE_90 -> switch (axis) {
-        case X -> Direction.Axis.Z;
-        case Z -> Direction.Axis.X;
-        default -> axis;
-      };
-      default -> axis;
-    };
-  }
-
-  public static <T extends Comparable<T>> BlockState with(BlockState state, Property<T> property, String name) {
-    return property.parse(name).map((value) -> state.with(property, value)).orElse(state);
-  }
-
-  @ApiStatus.AvailableSince("0.2.1")
-  public static MutableText describeColor(int color) {
-    return describeColor(color, TextBridge.literal(formatColorHex(color)));
-  }
-
-  public static MutableText describeColor(int color, Text text) {
-    return TextBridge.empty().append(TextBridge.literal("■").styled(style -> style.withColor(color))).append(text);
-  }
-
-  /**
-   * 接收一个整数形式的颜色，考虑到 Minecraft 可能存在带有 alpha 通道的颜色，因此当检测到有 alpha 通道时，格式化为 #aarrggbb 的格式，否则格式化为 #rrggbb 的格式。
-   */
-  public static String formatColorHex(int color) {
-    return (color & 0xff000000) != 0 ? String.format("#%08x", color) : String.format("#%06x", color);
-  }
-
-  public static MutableText describeShortcut(Text shortcut) {
-    return TextBridge.translatable("message.mishanguc.keyboard_shortcut.composed", shortcut).formatted(Formatting.GRAY);
-  }
-
-  @ApiStatus.AvailableSince("0.2.4")
-  public static String composeStraightLineTexture(LineColor lineColor, LineType lineType) {
-    if (lineType == LineType.NORMAL) {
-      return lineColor.asString() + "_straight_line";
+  @Environment(EnvType.CLIENT)
+  @Override
+  public boolean renderBlockOutline(PlayerEntity player, ItemStack itemStack, WorldRenderContext worldRenderContext, WorldRenderContext.BlockOutlineContext blockOutlineContext, Hand hand) {
+    final MinecraftClient client = MinecraftClient.getInstance();
+    if (!hasAccess(player, worldRenderContext.world(), false)) {
+      return true;
     } else {
-      return lineColor.asString() + "_straight_" + lineType.asString() + "_line";
-    }
-  }
-
-  public static String composeAngleLineTexture(LineColor lineColor, LineType lineType, boolean bevel) {
-    return lineColor.asString() + "_" + (lineType == LineType.NORMAL ? "" : lineColor.asString() + "_") + (bevel ? "bevel" : "right") + "_angle_line";
-  }
-
-  public static int readColorFromNbtElement(NbtElement nbtColor) {
-    if (nbtColor instanceof final AbstractNbtNumber abstractNbtNumber) {
-      return abstractNbtNumber.intValue();
-    } else if (nbtColor instanceof NbtString) {
-      final TextColor parse = TextColor.parse(nbtColor.asString());
-      return parse == null ? 0 : parse.getRgb();
-    } else if (nbtColor instanceof AbstractNbtList<?> list) {
-      final int size = list.size();
-      NbtElement _red = size > 0 ? list.get(0) : null;
-      NbtElement _green = size > 1 ? list.get(1) : null;
-      NbtElement _blue = size > 2 ? list.get(2) : null;
-      NbtElement _alpha = size > 3 ? list.get(3) : null;
-      int red = _red instanceof AbstractNbtNumber ? ((AbstractNbtNumber) _red).intValue() & 0xff : 0;
-      int green = _green instanceof AbstractNbtNumber ? ((AbstractNbtNumber) _green).intValue() & 0xff : 0;
-      int blue = _blue instanceof AbstractNbtNumber ? ((AbstractNbtNumber) _blue).intValue() & 0xff : 0;
-      int alpha = _alpha instanceof AbstractNbtNumber ? ((AbstractNbtNumber) _alpha).intValue() & 0xff : 0;
-      return (red << 16) | (green << 8) | blue | (alpha << 24);
-    } else if (nbtColor instanceof final NbtCompound nbtCompound) {
-      if (nbtCompound.contains("signColor", NbtElement.STRING_TYPE)) {
-        return DyeColor.byName(nbtCompound.getString("signColor"), DyeColor.BLACK).getSignColor();
-      } else if (nbtCompound.contains("fireworkColor", NbtElement.STRING_TYPE)) {
-        return DyeColor.byName(nbtCompound.getString("fireworkColor"), DyeColor.BLACK).getFireworkColor();
-      } else if (nbtCompound.contains("mapColor", NbtElement.STRING_TYPE)) {
-        return DyeColor.byName(nbtCompound.getString("mapColor"), DyeColor.BLACK).getMapColor().color;
-      } else {
-        return 0;
+      final Item item = player.getMainHandStack().getItem();
+      if (hand == Hand.OFF_HAND && (item instanceof BlockItem || item instanceof CarryingToolItem)) {
+        return true;
       }
+    }
+    final VertexConsumerProvider consumers = worldRenderContext.consumers();
+    if (consumers == null) {
+      return true;
+    }
+    final VertexConsumer vertexConsumer = consumers.getBuffer(RenderLayer.LINES);
+
+    final BlockHitResult blockHitResult;
+    final MatrixStack matrices = worldRenderContext.matrixStack();
+    HitResult crosshairTarget = client.crosshairTarget;
+    if (crosshairTarget instanceof BlockHitResult) {
+      blockHitResult = (BlockHitResult) crosshairTarget;
     } else {
-      return 0;
+      return true;
+    }
+    final boolean includesFluid = this.includesFluid(itemStack, player.isSneaking());
+    final BlockPlacementContext blockPlacementContext = new BlockPlacementContext(worldRenderContext.world(), blockOutlineContext.blockPos(), player, itemStack, blockHitResult, includesFluid);
+    WorldRendererInvoker.drawCuboidShapeOutline(matrices, vertexConsumer, blockPlacementContext.stateToPlace.getOutlineShape(blockPlacementContext.world, blockPlacementContext.posToPlace, ShapeContext.of(player)), blockPlacementContext.posToPlace.getX() - blockOutlineContext.cameraX(), blockPlacementContext.posToPlace.getY() - blockOutlineContext.cameraY(), blockPlacementContext.posToPlace.getZ() - blockOutlineContext.cameraZ(), 0, 1, 1, 0.8f);
+    if (includesFluid) {
+      WorldRendererInvoker.drawCuboidShapeOutline(matrices, vertexConsumer, blockPlacementContext.stateToPlace.getFluidState().getShape(blockPlacementContext.world, blockPlacementContext.posToPlace), blockPlacementContext.posToPlace.getX() - blockOutlineContext.cameraX(), blockPlacementContext.posToPlace.getY() - blockOutlineContext.cameraY(), blockPlacementContext.posToPlace.getZ() - blockOutlineContext.cameraZ(), 0, 0.5f, 1, 0.5f);
+    }
+    return false;
+  }
+
+  @Override
+  public @NotNull ActionResult attackEntityCallback(PlayerEntity player, World world, Hand hand, Entity entity, @Nullable EntityHitResult hitResult) {
+    if (!hasAccess(player, world, true)) return ActionResult.PASS;
+    if (!world.isClient) {
+      if (entity instanceof PlayerEntity) {
+        entity.kill();
+      } else {
+        entity.remove(Entity.RemovalReason.KILLED);
+      }
+      if (entity instanceof EnderDragonPart enderDragonPart) {
+        enderDragonPart.owner.kill();
+      }
+    }
+    return ActionResult.SUCCESS;
+  }
+
+  @ApiStatus.AvailableSince("1.0.0")
+  private static boolean hasAccess(PlayerEntity player, World world, boolean warn) {
+    if (world.isClient) {
+      return MishangucClient.CLIENT_FORCE_PLACING_TOOL_ACCESS.get().hasAccess(player);
+    } else {
+      return true; // Placeholder, replace with actual access check.
     }
   }
 
-  /**
-   * 将数字转换为字符串，如果这个符点数的值正好等于整数，那么转换为字符串时不显示小数部分。
-   */
-  public static String numberToString(float value) {
-    final int intValue = (int) value;
-    return value == intValue ? Integer.toString(intValue) : Float.toString(value);
+  @Environment(EnvType.CLIENT)
+  @Override
+  public void renderBeforeOutline(WorldRenderContext context, HitResult hitResult, ClientPlayerEntity player, Hand hand) {
+    if (hand != Hand.MAIN_HAND || !hasAccess(player, context.world(), false)) return;
+    final MatrixStack matrices = context.matrixStack();
+    final VertexConsumerProvider consumers = context.consumers();
+    if (consumers == null) return;
+    final VertexConsumer vertexConsumer = consumers.getBuffer(RenderLayer.getLines());
+    final Vec3d cameraPos = context.camera().getPos();
+    if (hitResult instanceof EntityHitResult entityHitResult) {
+      final Entity entity = entityHitResult.getEntity();
+      WorldRendererInvoker.drawCuboidShapeOutline(matrices, vertexConsumer, VoxelShapes.cuboid(entity.getBoundingBox()), -cameraPos.x, -cameraPos.y, -cameraPos.z, 1.0f, 0f, 0f, 0.8f);
+    }
   }
-}
